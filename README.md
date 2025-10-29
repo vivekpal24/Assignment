@@ -76,9 +76,9 @@ npm install
 Create a `.env` file in the root directory:
 
 ```
-MONGO_URI=mongodb://127.0.0.1:27017/ticketboss
+MONGO_URI=mongodb+srv://<user_name>:<password>@ticketboss.hoohh3f.mongodb.net/ticketboss
 PORT=3000
-EVENT_ID=node-meetup-2025
+
 ```
 
 ### 4️⃣ Start the Server

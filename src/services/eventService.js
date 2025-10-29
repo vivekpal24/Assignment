@@ -3,10 +3,8 @@ const EventModel = require('../models/EventModel');
 const ReservationModel = require('../models/ReservationModel');
 
 class EventService {
-  constructor() {
-    this.initEvent();
-  }
 
+  // Initialize Event if not exists
   async initEvent() {
     try {
       let event = await EventModel.findOne({ eventId: 'node-meetup-2025' });
@@ -19,23 +17,28 @@ class EventService {
           availableSeats: 500,
           version: 0
         });
-        await event.save();
-        console.log('✅ Event initialized and saved to MongoDB');
-      } else {
-        console.log('✅ Event loaded from MongoDB');
-      }
 
-      this.event = event;
+        await event.save();
+        console.log('✅ Event initialized in database');
+      } else {
+        console.log('✅ Event loaded from database');
+      }
     } catch (err) {
       console.error('❌ Failed to initialize event:', err.message);
     }
   }
 
+  // Get Event Summary
   async getEventSummary() {
     const event = await EventModel.findOne({ eventId: 'node-meetup-2025' });
-    if (!event) throw new Error('EVENT_NOT_FOUND');
 
-    const reservationCount = await ReservationModel.countDocuments({ eventId: event.eventId });
+    if (!event) {
+      throw new Error('EVENT_NOT_FOUND');
+    }
+
+    const reservationCount = await ReservationModel.countDocuments({
+      eventId: event.eventId
+    });
 
     return {
       eventId: event.eventId,
@@ -47,14 +50,18 @@ class EventService {
     };
   }
 
+  // Reserve Seats with Optimistic Concurrency
   async reserveSeats(partnerId, seats) {
     const MAX_RETRIES = 5;
-    const BASE_DELAY = 10;
+    const BASE_DELAY_MS = 10;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const event = await EventModel.findOne({ eventId: 'node-meetup-2025' });
 
-      if (!event) throw new Error('EVENT_NOT_FOUND');
+      if (!event) {
+        throw new Error('EVENT_NOT_FOUND');
+      }
+
       if (event.availableSeats < seats) {
         throw new Error('NOT_ENOUGH_SEATS');
       }
@@ -62,70 +69,67 @@ class EventService {
       const reservationId = uuidv4();
       const currentVersion = event.version;
 
-      // Optimistic concurrency update
-      const updated = await EventModel.findOneAndUpdate(
-        {
-          eventId: 'node-meetup-2025',
-          version: currentVersion,
-        },
-        {
-          $inc: { version: 1, availableSeats: -seats },
-        },
+      const updateResult = await EventModel.findOneAndUpdate(
+        { eventId: 'node-meetup-2025', version: currentVersion },
+        { $inc: { version: 1, availableSeats: -seats } },
         { new: true }
       );
 
-      if (updated) {
-        const reservation = new ReservationModel({
+      if (updateResult) {
+        await ReservationModel.create({
           reservationId,
           partnerId,
           seats,
-          eventId: event.eventId,
+          eventId: 'node-meetup-2025'
         });
-        await reservation.save();
 
         return { reservationId, seats, status: 'confirmed' };
       }
 
-      const delay = BASE_DELAY * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // Retry after small delay
+      await new Promise(resolve =>
+        setTimeout(resolve, BASE_DELAY_MS * Math.pow(2, attempt))
+      );
     }
 
     throw new Error('CONCURRENCY_CONFLICT');
   }
 
+  // Cancel Reservation
   async cancelReservation(reservationId) {
     const reservation = await ReservationModel.findOne({ reservationId });
+
     if (!reservation) {
-      throw new Error('RESERVATION_NOT_FOUND');
+      return false; // controller will return 404
     }
 
     const MAX_RETRIES = 5;
-    const BASE_DELAY = 10;
+    const BASE_DELAY_MS = 10;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const event = await EventModel.findOne({ eventId: reservation.eventId });
-      if (!event) throw new Error('EVENT_NOT_FOUND');
+
+      if (!event) {
+        throw new Error('EVENT_NOT_FOUND');
+      }
 
       const currentVersion = event.version;
 
-      const updated = await EventModel.findOneAndUpdate(
-        {
-          eventId: reservation.eventId,
-          version: currentVersion,
-        },
-        {
-          $inc: { version: 1, availableSeats: reservation.seats },
-        },
+      const updateResult = await EventModel.findOneAndUpdate(
+        { eventId: reservation.eventId, version: currentVersion },
+        { $inc: { version: 1, availableSeats: reservation.seats } },
         { new: true }
       );
 
-      if (updated) {
+      if (updateResult) {
         await ReservationModel.deleteOne({ reservationId });
         return true;
       }
 
-      const delay = BASE_DELAY * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // Retry after delay
+      await new Promise(resolve =>
+        setTimeout(resolve, BASE_DELAY_MS * Math.pow(2, attempt))
+      );
     }
 
     throw new Error('CONCURRENCY_CONFLICT');

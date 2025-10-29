@@ -1,10 +1,12 @@
+// src/middleware/errorHandler.js
+
 function errorHandler(err, req, res, next) {
-  console.error('❌ Error:', err);
+  console.error('❌ Error:', err.message);
 
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
 
-  // Handle MongoDB / Mongoose specific errors
+  // Handle Mongoose validation errors
   if (err.name === 'ValidationError') {
     statusCode = 400;
     message = Object.values(err.errors)
@@ -12,23 +14,27 @@ function errorHandler(err, req, res, next) {
       .join(', ');
   }
 
+  // Duplicate key (e.g., reservationId conflict)
   if (err.code === 11000) {
-    // Duplicate key error (e.g., reservationId already exists)
     statusCode = 409;
     message = 'Duplicate entry detected';
   }
 
+  // Invalid ObjectId or cast error
   if (err.name === 'CastError') {
-    // Invalid ObjectId or casting issue
     statusCode = 400;
     message = `Invalid value for ${err.path}`;
   }
 
-  // Send response
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+  // Final response as assignment requires
+  const response = { error: message };
+
+  // Only include stack trace in development mode
+  if (process.env.NODE_ENV === 'development') {
+    response.stack = err.stack;
+  }
+
+  return res.status(statusCode).json(response);
 }
 
 module.exports = errorHandler;

@@ -1,9 +1,12 @@
-function validateReservation(partnerId, seats) {
+
+
+function validateReservation({ partnerId, seats }) {
   // Validate partnerId
   if (!partnerId || typeof partnerId !== 'string' || partnerId.trim() === '') {
     return {
       valid: false,
-      error: 'Partner ID is required and must be a non-empty string'
+      statusCode: 400,
+      error: 'partnerId is required'
     };
   }
 
@@ -11,15 +14,17 @@ function validateReservation(partnerId, seats) {
   if (typeof seats !== 'number' || !Number.isInteger(seats)) {
     return {
       valid: false,
-      error: 'Seats must be an integer'
+      statusCode: 400,
+      error: 'seats must be an integer'
     };
   }
 
-  // Ensure valid range
+  // Seats must be 1 to 10 as per assignment
   if (seats < 1 || seats > 10) {
     return {
       valid: false,
-      error: 'Seats must be between 1 and 10'
+      statusCode: 400,
+      error: 'seats must be between 1 and 10'
     };
   }
 
